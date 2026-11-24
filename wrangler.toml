@@ -1,0 +1,15 @@
+name = "zazobrain-api"
+main = "src/index.js"
+compatibility_date = "2026-11-24"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zazobrain-db"
+database_id = "4fa1a807-21e6-4146-ab1c-434d543f8e8d"
+migrations_dir = "migrations"
+
+[vars]
+ALLOWED_ORIGINS = "https://zazobrain.pages.dev,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
+CLOUDINARY_CLOUD_NAME = "z7xjjgyi"
+CLOUDINARY_API_KEY = "432845545672284"
