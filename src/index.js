@@ -334,9 +334,12 @@ async function handleChat(request, env) {
   }
   const records = await findChatKnowledge(env, question);
   const reference = records.length ? records.map((record) => JSON.stringify({ intent: record.intent, answer: record.answer, follow_up: record.follow_up, category: record.category })).join("\n") : "لا توجد سجلات مرجعية مطابقة.";
+  const isPricingQuestion = /سعر|بكام|كام|تكلف|جنيه|دولار|price|cost/i.test(question);
   let answer = "";
   let usedModel = false;
-  if (env.AI?.run) {
+  // الأسعار موجودة في قاعدة المعرفة، لذلك نرد عليها مباشرة بدون انتظار النموذج.
+  // هذا يمنع البطء أو أي إعادة صياغة قد تغيّر رقمًا موثقًا.
+  if (env.AI?.run && !isPricingQuestion) {
     const input = { messages: [
       { role: "system", content: `${CHAT_SYSTEM_RULES}\n\nالمراجع المسموح استخدامها فقط:\n${reference}` },
       { role: "user", content: question },
@@ -362,7 +365,6 @@ async function handleChat(request, env) {
       }
     }
   }
-  const isPricingQuestion = /سعر|بكام|كام|تكلف|جنيه|دولار|price|cost/i.test(question);
   if (!answer || (isPricingQuestion && records.some((record) => ["pricing", "pricing_policy"].includes(record.category)))) {
     const fallback = deterministicChatAnswer(records, question);
     answer = `${fallback.answer}${fallback.follow_up ? `\n\n${fallback.follow_up}` : ""}`;
