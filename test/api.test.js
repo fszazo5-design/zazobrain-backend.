@@ -108,6 +108,7 @@ test("Cloudinary signing returns a scoped one-time asset path without revealing 
   assert.match(credentials.publicId, /^zazobrain\/[0-9a-f-]{36}$/i);
   assert.equal(credentials.params.public_id, credentials.publicId);
   assert.equal(credentials.params.overwrite, "false");
+  assert.equal(credentials.params.allowed_formats, "png,jpg,jpeg,webp,gif");
   const canonical = Object.entries(credentials.params).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join("&");
   assert.equal(credentials.signature, createHash("sha1").update(`${canonical}${env.CLOUDINARY_API_SECRET}`).digest("hex"));
   assert.equal(JSON.stringify(credentials).includes(env.CLOUDINARY_API_SECRET), false);
@@ -185,6 +186,18 @@ test("inline BLOB media and foreign Cloudinary references are rejected", async (
   });
   assert.equal(foreign.status, 400);
   assert.equal((await foreign.json()).code, "INVALID_MEDIA_REFERENCE");
+  const mismatched = await request(env, "POST", "/api/content", {
+    token,
+    body: { kind: "project", title: "Mismatched asset", imageUrl: "https://res.cloudinary.com/demo-cloud/image/upload/v123/zazobrain/another-photo.webp", imagePublicId: "zazobrain/photo", imageResourceType: "image" },
+  });
+  assert.equal(mismatched.status, 400);
+  assert.equal((await mismatched.json()).code, "INVALID_MEDIA_REFERENCE");
+  const wrongType = await request(env, "POST", "/api/content", {
+    token,
+    body: { kind: "project", title: "Wrong resource type", imageUrl: "https://res.cloudinary.com/demo-cloud/video/upload/v123/zazobrain/photo.mp4", imagePublicId: "zazobrain/photo", imageResourceType: "image" },
+  });
+  assert.equal(wrongType.status, 400);
+  assert.equal((await wrongType.json()).code, "INVALID_MEDIA_REFERENCE");
   assert.equal(env.DB.content.size, 0);
 });
 
@@ -213,6 +226,28 @@ test("deleting content also attempts to delete its Cloudinary assets", async () 
   assert.equal(destroyed.length, 2);
   assert.ok(destroyed.some((entry) => entry.url.endsWith("/image/destroy") && entry.body.get("public_id") === "zazobrain/photo"));
   assert.ok(destroyed.some((entry) => entry.url.endsWith("/video/destroy") && entry.body.get("public_id") === "zazobrain/demo"));
+});
+
+test("a Cloudinary cleanup failure keeps the D1 content record for retry", async () => {
+  const env = makeEnv();
+  const token = await login(env);
+  const created = await request(env, "POST", "/api/content", {
+    token,
+    body: { kind: "project", title: "Keep for retry", imageUrl, imagePublicId: "zazobrain/photo", imageResourceType: "image" },
+  });
+  const { item } = await created.json();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "temporary failure" } }), {
+    status: 503, headers: { "Content-Type": "application/json" },
+  });
+  try {
+    const deleted = await request(env, "DELETE", "/api/content", { token, body: { id: item.id } });
+    assert.equal(deleted.status, 502);
+    assert.equal((await deleted.json()).code, "CLOUDINARY_DELETE_FAILED");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(env.DB.content.has(item.id), true);
 });
 
 test("GET is public and CORS allows only configured/local origins", async () => {

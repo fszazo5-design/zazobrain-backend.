@@ -31,7 +31,7 @@ Backend مستقل يعمل على Cloudflare Workers. يحفظ D1 بيانات 
 - لوحة الإدارة تطلب من `POST /api/media/sign` توقيعًا بعد التحقق من JWT، ثم ترفع الملف مباشرةً إلى Cloudinary. لا يصل `CLOUDINARY_API_SECRET` إلى المتصفح.
 - الرفع الموقّع يولّد `public_id` عشوائيًا تحت `zazobrain/` مع `overwrite=false`. الأنواع المدعومة في الواجهة هي PNG/JPEG/WebP/GIF للصور وMP4/MOV/WebM للفيديو.
 - يجب تعيين `ALLOWED_ORIGINS` إلى أصول الموقع الدقيقة؛ لا تستخدم `*`.
-- حذف سجل محتوى يحذف السجل من D1 ويحاول حذف أصول Cloudinary المسجلة معه. تعيد الاستجابة `mediaDeleted` لحالة التنظيف.
+- يتحقق Worker من أن مسار رابط Cloudinary يطابق `public_id` ونوع الأصل المعلنين. عند الحذف، ينظف Cloudinary أولًا ثم يحذف D1؛ إذا فشل التنظيف يعيد `502` ويبقي سجل D1 ليمكن إعادة المحاولة. إذا حُذف أصل ثم فشل حذف أصل آخر، تقبل Cloudinary إعادة محاولة الأصل الأول باعتباره `not found`.
 - كل استعلامات D1 تستخدم prepared statements، وPOST/DELETE وتوقيع الرفع محمية بـBearer JWT.
 
 ## عقد API
@@ -40,7 +40,7 @@ Backend مستقل يعمل على Cloudflare Workers. يحفظ D1 بيانات 
 - `GET /api/content` — عام؛ يعيد `{ "items": [...] }`. مرشح اختياري `?kind=project|system-video|content-video`.
 - `POST /api/media/sign` — يتطلب Bearer JWT؛ body `{ "resourceType": "image"|"video" }`. يعيد بيانات رفع موقّعة صالحة للرفع المباشر، من دون كشف سر Cloudinary.
 - `POST /api/content` — يتطلب Bearer JWT؛ يضيف سجلًا ويعيد `{ "item": ... }`. يدعم حقول المحتوى الحالية، إضافةً إلى `imagePublicId`, `imageResourceType`, `videoPublicId`, و`videoResourceType` للوسائط التي رُفعت إلى Cloudinary. يقبل روابط HTTP(S) خارجية أيضًا. لا يقبل `imageData` أو باينري.
-- `DELETE /api/content` — يتطلب Bearer JWT؛ body `{ "id": "..." }`. يحذف السجل ويحاول تنظيف ملفات Cloudinary المرتبطة.
+- `DELETE /api/content` — يتطلب Bearer JWT؛ body `{ "id": "..." }`. ينظف ملفات Cloudinary قبل حذف السجل. يعيد `502` مع `CLOUDINARY_DELETE_FAILED` ويبقي السجل عند فشل التنظيف.
 
 استجابة المحتوى تتضمن `id`, `kind`, `title`, `description`, `category`, `imageUrl`, `contentUrl`, `technologies`, `topic`, `views`, `duration`, `date`, `image`, `thumbnail`, `videoUrl`, `createdAt`, و`updatedAt`. `image` alias لـ`imageUrl`.
 
@@ -79,7 +79,7 @@ For local development, apply `npx wrangler d1 migrations apply zazobrain-db --lo
 - The admin dashboard requests a signed upload from `POST /api/media/sign` after JWT authorization, then uploads directly to Cloudinary. `CLOUDINARY_API_SECRET` never reaches the browser.
 - Signed uploads use a random `public_id` under `zazobrain/` and `overwrite=false`. The UI supports PNG/JPEG/WebP/GIF images and MP4/MOV/WebM video.
 - Set `ALLOWED_ORIGINS` to exact site origins; do not use `*`.
-- Deleting a content row removes it from D1 and attempts to delete its registered Cloudinary assets. The response includes `mediaDeleted`.
+- The Worker verifies that a Cloudinary URL path matches the declared `public_id` and resource type. Deletion cleans Cloudinary first and then removes the D1 row; if cleanup fails, it returns `502` and keeps the D1 row for retry. If one asset was deleted before another failed, Cloudinary's `not found` response makes retry safe.
 - All D1 queries use prepared statements; POST/DELETE and upload signing require a Bearer JWT.
 
 ## API contract
@@ -88,6 +88,6 @@ For local development, apply `npx wrangler d1 migrations apply zazobrain-db --lo
 - `GET /api/content` — public; returns `{ "items": [...] }`. Optional filter: `?kind=project|system-video|content-video`.
 - `POST /api/media/sign` — Bearer JWT required; body `{ "resourceType": "image"|"video" }`. Returns signed direct-upload parameters without exposing the Cloudinary secret.
 - `POST /api/content` — Bearer JWT required; creates a row and returns `{ "item": ... }`. In addition to content fields, it accepts `imagePublicId`, `imageResourceType`, `videoPublicId`, and `videoResourceType` for uploaded Cloudinary assets. External HTTP(S) links are also supported. `imageData` and binary payloads are rejected.
-- `DELETE /api/content` — Bearer JWT required; body `{ "id": "..." }`. Deletes the row and attempts Cloudinary cleanup for associated assets.
+- `DELETE /api/content` — Bearer JWT required; body `{ "id": "..." }`. Cleans Cloudinary assets before deleting the row. Returns `502` with `CLOUDINARY_DELETE_FAILED` and keeps the row if cleanup fails.
 
 Records include `id`, `kind`, `title`, `description`, `category`, `imageUrl`, `contentUrl`, `technologies`, `topic`, `views`, `duration`, `date`, `image`, `thumbnail`, `videoUrl`, `createdAt`, and `updatedAt`. `image` aliases `imageUrl`.

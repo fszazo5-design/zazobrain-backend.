@@ -166,7 +166,12 @@ function validateCloudinaryReference(publicIdValue, resourceTypeValue, urlValue,
   try { parsed = new URL(url); } catch {
     throw Object.assign(new Error(`${field} must use the configured Cloudinary delivery URL.`), { status: 400, code: "INVALID_MEDIA_REFERENCE", field });
   }
-  if (parsed.protocol !== "https:" || parsed.hostname !== "res.cloudinary.com" || !parsed.pathname.startsWith(`/${env.CLOUDINARY_CLOUD_NAME}/`)) {
+  const uploadPath = `/${env.CLOUDINARY_CLOUD_NAME}/${expectedResourceType}/upload/`;
+  const deliveredPath = parsed.pathname.startsWith(uploadPath)
+    ? parsed.pathname.slice(uploadPath.length).replace(/^v\d+\//, "")
+    : "";
+  const matchesPublicId = deliveredPath === publicId || deliveredPath.startsWith(`${publicId}.`);
+  if (parsed.protocol !== "https:" || parsed.hostname !== "res.cloudinary.com" || !matchesPublicId) {
     throw Object.assign(new Error(`${field} must use the configured Cloudinary delivery URL.`), { status: 400, code: "INVALID_MEDIA_REFERENCE", field });
   }
   return publicId;
@@ -313,15 +318,18 @@ async function handleContent(request, env, url) {
     const id = String(body.id).trim();
     const existing = await env.DB.prepare("SELECT image_public_id, video_public_id FROM content WHERE id = ?").bind(id).first();
     if (!existing) return json({ error: "Content not found.", code: "NOT_FOUND" }, 404);
-    const result = await env.DB.prepare("DELETE FROM content WHERE id = ?").bind(id).run();
-    if (!result.meta?.changes) return json({ error: "Content not found.", code: "NOT_FOUND" }, 404);
     const cleanup = await Promise.allSettled([
       existing.image_public_id ? destroyCloudinaryAsset(env, existing.image_public_id, "image") : Promise.resolve(true),
       existing.video_public_id ? destroyCloudinaryAsset(env, existing.video_public_id, "video") : Promise.resolve(true),
     ]);
     const mediaDeleted = cleanup.map((entry) => entry.status === "fulfilled" && entry.value);
-    if (cleanup.some((entry) => entry.status === "rejected")) console.error("Cloudinary cleanup failed for content", id);
-    return json({ deleted: true, id, mediaDeleted: mediaDeleted.every(Boolean) });
+    if (mediaDeleted.some((deleted) => !deleted)) {
+      if (cleanup.some((entry) => entry.status === "rejected")) console.error("Cloudinary cleanup failed for content", id);
+      return json({ error: "Cloudinary media could not be deleted. The content record was kept so you can retry.", code: "CLOUDINARY_DELETE_FAILED", mediaDeleted: false }, 502);
+    }
+    const result = await env.DB.prepare("DELETE FROM content WHERE id = ?").bind(id).run();
+    if (!result.meta?.changes) return json({ error: "Content not found.", code: "NOT_FOUND" }, 404);
+    return json({ deleted: true, id, mediaDeleted: true });
   }
 
   return json({ error: "Method not allowed.", code: "METHOD_NOT_ALLOWED" }, 405, { Allow: "GET, POST, DELETE, OPTIONS" });
