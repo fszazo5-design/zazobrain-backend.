@@ -13,3 +13,13 @@ migrations_dir = "migrations"
 ALLOWED_ORIGINS = "https://zazobrain.pages.dev,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
 CLOUDINARY_CLOUD_NAME = "z7xjjgyi"
 CLOUDINARY_API_KEY = "432845545672284"
+AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+AI_ACCOUNT_ID = "c0896b628de5d9c18d270d45b254ac0a"
+
+[ai]
+binding = "AI"
+remote = true
+
+[[kv_namespaces]]
+binding = "CHAT_CACHE"
+id = "c9dd9232768445d7bc721d1631d0a1db"
