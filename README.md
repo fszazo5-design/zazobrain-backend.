@@ -37,7 +37,8 @@ Backend مستقل يعمل على Cloudflare Workers. يحفظ D1 بيانات 
 ## عقد API
 
 - `POST /api/login` — body `{ "password": "..." }`; يعيد `{ "token": "<JWT>", "expiresAt": "<ISO-8601>" }`. الرمز HMAC-SHA256 صالح 8 ساعات.
-- `GET /api/content` — عام؛ يعيد `{ "items": [...] }`. مرشح اختياري `?kind=project|system-video|content-video`.
+- `GET /api/content` — عام؛ يعيد `{ "items": [...] }`. مرشح اختياري `?kind=project|system-video|content-video|source|service`.
+- يدعم `source` للمصادر المجانية و`service` للخدمات، وتُدار الإضافات والحذف من لوحة الإدارة بنفس جلسة JWT وD1.
 - `POST /api/media/sign` — يتطلب Bearer JWT؛ body `{ "resourceType": "image"|"video" }`. يعيد بيانات رفع موقّعة صالحة للرفع المباشر، من دون كشف سر Cloudinary.
 - `POST /api/content` — يتطلب Bearer JWT؛ يضيف سجلًا ويعيد `{ "item": ... }`. يدعم حقول المحتوى الحالية، إضافةً إلى `imagePublicId`, `imageResourceType`, `videoPublicId`, و`videoResourceType` للوسائط التي رُفعت إلى Cloudinary. يقبل روابط HTTP(S) خارجية أيضًا. لا يقبل `imageData` أو باينري.
 - `DELETE /api/content` — يتطلب Bearer JWT؛ body `{ "id": "..." }`. ينظف ملفات Cloudinary قبل حذف السجل. يعيد `502` مع `CLOUDINARY_DELETE_FAILED` ويبقي السجل عند فشل التنظيف.

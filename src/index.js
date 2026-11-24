@@ -1,4 +1,4 @@
-const ALLOWED_KINDS = new Set(["project", "system-video", "content-video"]);
+const ALLOWED_KINDS = new Set(["project", "system-video", "content-video", "source", "service"]);
 const MAX_JSON_BYTES = 1024 * 1024;
 const TOKEN_TTL_SECONDS = 8 * 60 * 60;
 const CLOUDINARY_PUBLIC_ID_PREFIX = "zazobrain/";
@@ -272,7 +272,7 @@ async function destroyCloudinaryAsset(env, publicId, resourceType) {
 async function handleContent(request, env, url) {
   if (request.method === "GET") {
     const kind = url.searchParams.get("kind");
-    if (kind && !ALLOWED_KINDS.has(kind)) return json({ error: "kind must be project, system-video, or content-video.", code: "INVALID_KIND" }, 400);
+    if (kind && !ALLOWED_KINDS.has(kind)) return json({ error: "kind must be project, system-video, content-video, source, or service.", code: "INVALID_KIND" }, 400);
     const result = kind
       ? await env.DB.prepare("SELECT * FROM content WHERE kind = ? ORDER BY created_at DESC").bind(kind).all()
       : await env.DB.prepare("SELECT * FROM content ORDER BY created_at DESC").all();
@@ -284,7 +284,7 @@ async function handleContent(request, env, url) {
     const body = await readJson(request);
     if (body.imageData) return json({ error: "Upload media to Cloudinary first; D1 stores only the resulting URL and metadata.", code: "CLOUDINARY_UPLOAD_REQUIRED" }, 400);
     const kind = cleanString(body.kind, "kind", 32, { required: true });
-    if (!ALLOWED_KINDS.has(kind)) return json({ error: "kind must be project, system-video, or content-video.", code: "INVALID_KIND", field: "kind" }, 400);
+    if (!ALLOWED_KINDS.has(kind)) return json({ error: "kind must be project, system-video, content-video, source, or service.", code: "INVALID_KIND", field: "kind" }, 400);
     const title = cleanString(body.title, "title", 200, { required: true });
     const description = cleanString(body.description, "description", 10000);
     const category = cleanString(body.category, "category", 120);
