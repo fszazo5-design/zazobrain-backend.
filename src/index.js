@@ -291,7 +291,7 @@ async function findChatKnowledge(env, question) {
   const clauses = tokens.map(() => "searchable_text LIKE ?").join(" OR ");
   const score = tokens.map(() => "(searchable_text LIKE ?)").join(" + ");
   const patterns = tokens.map((token) => `%${token}%`);
-  const result = await env.DB.prepare(`SELECT id, record_type, category, intent, content_json FROM chat_knowledge_records WHERE ${clauses} ORDER BY (${score}) DESC LIMIT 8`)
+  const result = await env.DB.prepare(`SELECT id, record_type, category, intent, content_json FROM chat_knowledge_records WHERE ${clauses} ORDER BY (${score}) DESC LIMIT 20`)
     .bind(...patterns, ...patterns).all();
   return (result.results || []).map((row) => {
     try { return JSON.parse(row.content_json); } catch { return null; }
