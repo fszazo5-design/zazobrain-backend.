@@ -327,12 +327,17 @@ async function handleChat(request, env) {
   if (request.method !== "POST") return json({ error: "Method not allowed.", code: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST, OPTIONS" });
   const body = await readJson(request);
   const question = cleanString(body.question, "question", CHAT_MAX_QUESTION, { required: true });
-  const cacheKey = `chat:v1:${await digestHex(normalizeChatText(question))}`;
+  const history = Array.isArray(body.history) ? body.history.slice(-8).map((item) => ({
+    role: item?.role === "assistant" ? "assistant" : "user",
+    text: cleanString(item?.text, "history.text", 1600),
+  })).filter((item) => item.text) : [];
+  const contextQuestion = [question, ...history.filter((item) => item.role === "user").map((item) => item.text)].join(" ");
+  const cacheKey = `chat:v2:${await digestHex(normalizeChatText(contextQuestion))}`;
   if (env.CHAT_CACHE) {
     const cached = await env.CHAT_CACHE.get(cacheKey, "json").catch(() => null);
     if (cached?.answer) return json({ ...cached, cached: true });
   }
-  const records = await findChatKnowledge(env, question);
+  const records = await findChatKnowledge(env, contextQuestion);
   const reference = records.length ? records.map((record) => JSON.stringify({ intent: record.intent, answer: record.answer, follow_up: record.follow_up, category: record.category })).join("\n") : "لا توجد سجلات مرجعية مطابقة.";
   const isPricingQuestion = /سعر|بكام|كام|تكلف|جنيه|دولار|price|cost/i.test(question);
   let answer = "";
@@ -342,6 +347,7 @@ async function handleChat(request, env) {
   if (env.AI?.run && !isPricingQuestion) {
     const input = { messages: [
       { role: "system", content: `${CHAT_SYSTEM_RULES}\n\nالمراجع المسموح استخدامها فقط:\n${reference}` },
+      ...history.map((item) => ({ role: item.role, content: item.text })),
       { role: "user", content: question },
     ], max_tokens: 260, temperature: 0.1 };
     if (env.AI_LORA_NAME) input.lora = String(env.AI_LORA_NAME);
